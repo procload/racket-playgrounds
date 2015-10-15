@@ -58,8 +58,12 @@
   (quotient (+ (interval_guess-small w) (interval_guess-big w)) 2))
 
 (define (render w)
-  (overlay (text (number->string (guess w)) SIZE COLOR)
-           (text (number->string (interval_guess-guess w)) SIZE COLOR) MT-SC))
+  (overlay/align
+   "center" "middle" (text (number->string (guess w)) SIZE COLOR) 
+   (overlay/align
+     "right" "bottom" (text (number->string (interval_guess-guess w)) 20 "blue")
+    MT-SC)))
+
 
 (define (render-last-scene w)
   (overlay (text "End" SIZE COLOR) MT-SC))
