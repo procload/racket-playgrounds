@@ -1,4 +1,3 @@
-#lang racket
 (define lower 1)
 (define upper 100)
 
@@ -16,4 +15,3 @@
 (define (start n m)
   (set! lower (min n m))
   (set! upper (max n m)))
-        
