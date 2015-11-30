@@ -19,7 +19,7 @@
 
 (struct orc-world (player lom attack# target) #:mutable)
 
-(struct player (health agility strength) #:mutable)
+(struct player (health agility strength armor) #:mutable)
 
 ;; -----------------------------------------------------------------------------
 ;; THE CONSTANTS IN THE WORLD 
@@ -28,6 +28,7 @@
 (define MAX-HEALTH 35)
 (define MAX-AGILITY 35)
 (define MAX-STRENGTH 35)
+(define MAX-ARMOR 8)
 
 ;; depending on other player attributes, 
 ;; the game picks the number of attacks, flailing and stabbing damage 
@@ -35,6 +36,9 @@
 (define STAB-DAMAGE 2)
 (define FLAIL-DAMAGE 3)
 (define HEALING 8)
+(define AGILITY-INC 8)
+(define STRENGTH-INC 8)
+(define ARMOR-INC 2)
 
 ;; monster attributes 
 (define MONSTER# 12)
@@ -49,18 +53,23 @@
 (define HEALTH-DAMAGE -2)
 (define AGILITY-DAMAGE -3)
 (define STRENGTH-DAMAGE -4)
+(define ARMOR-DAMAGE -2)
 
 ;; string constants 
 (define STRENGTH "strength")
 (define AGILITY "agility")
 (define HEALTH "health")
+(define ARMOR "armor")
 (define LOSE  "YOU LOSE")
 (define WIN "YOU WIN")
 (define DEAD "DEAD")
 (define REMAINING "Remaining attacks ")
 (define INSTRUCTIONS-2 "Select a monster using the arrow keys")
 (define INSTRUCTIONS-1
-  "Press S to stab a monster | Press F to Flail wildly | Press H to Heal")
+  "Press S to stab a monster | Press F to Flail wildly | Press B to Block ")
+
+(define INSTRUCTIONS-3
+  "Press H to Heal | Press A to Increase Agility | Press T to Increse Strength")
 
 ;; graphical constants 
 (define HEALTH-BAR-HEIGHT 12)
@@ -97,6 +106,7 @@
 (define MONSTER-COLOR "crimson")
 (define MESSAGE-COLOR "black")
 (define ATTACK-COLOR "crimson")
+(define ARMOR-COLOR "DodgerBlue")
 
 (define HEALTH-SIZE (- HEALTH-BAR-HEIGHT 4))
 (define DEAD-TEXT-SIZE (- HEALTH-BAR-HEIGHT 2))
@@ -104,8 +114,9 @@
 (define MESSAGES-SIZE 40)
 
 (define INSTRUCTION-TEXT
-  (above 
+  (above
    (text INSTRUCTIONS-2 (- INSTRUCTION-TEXT-SIZE 2) "blue")
+   (text INSTRUCTIONS-3 (- INSTRUCTION-TEXT-SIZE 4) "blue")
    (text INSTRUCTIONS-1 (- INSTRUCTION-TEXT-SIZE 4) "blue")))
 
 (define DEAD-TEXT (text DEAD DEAD-TEXT-SIZE "crimson"))
@@ -131,6 +142,9 @@
 (define player-agility+
   (player-update! set-player-agility! player-agility MAX-AGILITY))
 
+(define player-armor+
+  (player-update! set-player-armor! player-armor MAX-ARMOR))
+
 (define (initialize-orc-world)
   (define player0 (initialize-player))
   (define lom0 (initialize-monsters))
@@ -151,6 +165,9 @@
     
     [(key=? "s" k) (stab w)]
     [(key=? "h" k) (heal w)]
+    [(key=? "a" k) (agility-inc w)]
+    [(key=? "t" k) (strength-inc w)]
+    [(key=? "b" k) (block w)]
     [(key=? "f" k) (flail w)]
     
     [(key=? "right" k) (move-target w +1)]
@@ -171,7 +188,7 @@
             (stop-when end-of-orc-battle? render-the-end)))
 
 (define (initialize-player)
-  (player MAX-HEALTH MAX-AGILITY MAX-STRENGTH))
+  (player MAX-HEALTH MAX-AGILITY MAX-STRENGTH MAX-ARMOR))
 
 (define (random-number of attacks p)
   (random-quotient (player-agility p) ATTACKS#))
@@ -220,6 +237,7 @@
   (define s (player-strength p))
   (define a (player-agility p))
   (define h (player-health p))
+  (define ar (player-armor p))
   (above/align
     "left"
     (status-bar s MAX-STRENGTH STRENGTH-COLOR STRENGTH)
@@ -227,6 +245,8 @@
     (status-bar a MAX-AGILITY AGILITY-COLOR AGILITY)
     V-SPACER
     (status-bar h MAX-HEALTH HEALTH-COLOR HEALTH)
+    V-SPACER
+    (status-bar ar MAX-ARMOR ARMOR-COLOR ARMOR)
     V-SPACER V-SPACER V-SPACER
     PLAYER-IMAGE))
 
@@ -294,6 +314,18 @@
   (decrease-attack# w)
   (player-health+ (orc-world-player w) HEALING))
 
+(define (agility-inc w)
+  (decrease-attack# w)
+  (player-agility+ (orc-world-player w) AGILITY-INC))
+
+(define (strength-inc w)
+  (decrease-attack# w)
+  (player-strength+ (orc-world-player w) STRENGTH-INC))
+
+(define (block w)
+  (decrease-attack# w)
+  (player-armor+ (orc-world-player w) ARMOR-INC))
+
 (define (stab w)
   (decrease-attack# w)
   (define target
@@ -335,6 +367,14 @@
     (all-monsters-attack-player player (orc-world-lom w))
     (set-orc-world-attack#! w (random-number-of-attacks player))))
 
+(define (armor-check p)
+  (define armor-level (player-armor p))
+  (cond
+    [(zero? armor-level) 0]
+    [else
+     (player-armor+ p -1)])
+  (player-armor p))
+
 ;; Player [Listof Monster] -> Void 
 ;; Each monster attacks the player
 (define (all-monsters-attack-player player lom) 
@@ -342,17 +382,36 @@
   (define (one-monster-attacks-player monster)
     (cond
       [(orc? monster)
-       (player-health+ player (random- (orc-club monster)))]
-      [(hydra? monster)
-       (player-health+ player (random- (monster-health monster)))]
-      [(slime? monster) 
-       (player-health+ player -1)
+       (cond
+         [(zero? (armor-check player))
+          (player-health+ player (random- (orc-club monster)))]
+         [else
+          (player-health+ player (sub1 (random- (orc-club monster))))])]
+     [(hydra? monster)
+      (cond
+         [(zero? (armor-check player))
+          (player-health+ player (random- (monster-health monster)))]
+         [else
+          (player-health+ player (sub1 (random- (monster-health monster))))])]
+      [(slime? monster)
+       (cond
+         [(zero? (armor-check player))
+          (player-health+ player -1)])
        (player-agility+ player (random- (slime-sliminess monster)))]
       [(brigand? monster) 
        (case (random 3)
-         [(0) (player-health+ player HEALTH-DAMAGE)]
-         [(1) (player-agility+ player AGILITY-DAMAGE)]
-         [(2) (player-strength+ player STRENGTH-DAMAGE)])]))
+         [(0)
+          (cond
+            [(zero? (armor-check player))
+             (player-health+ player HEALTH-DAMAGE)]
+            [else
+             (player-health+ player (sub1 HEALTH-DAMAGE))])]
+         [(1)
+          (player-agility+ player AGILITY-DAMAGE)
+          (player-armor+ player -1)]
+         [(2)
+          (player-strength+ player STRENGTH-DAMAGE)
+          (player-armor+ player -1)])]))
   ;; -- IN -- 
   (for-each one-monster-attacks-player (filter monster-alive? lom)))
 
